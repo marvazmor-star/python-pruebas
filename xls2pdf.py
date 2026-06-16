@@ -30,14 +30,18 @@ def convertir_con_excel_nativo(archivo_excel, ruta_origen, ruta_destino):
     
     vbs_path = os.path.join(destino_abs, f"_temp_{nombre_base}.vbs")
     
+    # CORRECCIÓN AQUÍ: Limpiamos las barras fuera del f-string para evitar el SyntaxError
+    ruta_excel_escapada = ruta_excel.replace('\\', '\\\\')
+    ruta_pdf_escapada = ruta_pdf.replace('\\', '\\\\')
+    
     vbs_code = f"""
     On Error Resume Next
     Set excelApp = CreateObject("Excel.Application")
     excelApp.Visible = False
     excelApp.DisplayAlerts = False
     excelApp.ScreenUpdating = False
-    Set wb = excelApp.Workbooks.Open("{ruta_excel.replace('\\', '\\\\')}", 0, True)
-    wb.ExportAsFixedFormat 0, "{ruta_pdf.replace('\\', '\\\\')}"
+    Set wb = excelApp.Workbooks.Open("{ruta_excel_escapada}", 0, True)
+    wb.ExportAsFixedFormat 0, "{ruta_pdf_escapada}"
     wb.Close False
     excelApp.Quit
     """
@@ -57,7 +61,7 @@ def convertir_con_excel_nativo(archivo_excel, ruta_origen, ruta_destino):
             os.remove(vbs_path)
         return False, str(e)
 
-# --- GENERADOR DE INFORME PREMIUM HTML5/CSS3 (CORREGIDO SIN F-STRINGS CONFLICTIVOS) ---
+# --- GENERADOR DE INFORME PREMIUM HTML5/CSS3 ---
 
 def generar_y_abrir_informe(d, errores):
     ruta_informe = os.path.join(d['ruta_destino'], f"Informe_Procesamiento_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html")
@@ -69,7 +73,6 @@ def generar_y_abrir_informe(d, errores):
     else:
         filas_errores = "<tr><td colspan='3' style='text-align:center;padding:30px;color:#10b981;font-weight:500;'>✓ No se detectaron anomalías. Todos los archivos se procesaron de forma impecable.</td></tr>"
 
-    # Estilos separados para evitar romper la sintaxis de Python
     css_styles = """
         :root { --bg-main: #f8fafc; --panel-bg: #ffffff; --text-main: #0f172a; --text-muted: #64748b; --primary: #1e293b; --primary-accent: #3b82f6; --success: #10b981; --danger: #ef4444; --border-color: #e2e8f0; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg-main); color: var(--text-main); margin: 0; padding: 40px 20px; }
