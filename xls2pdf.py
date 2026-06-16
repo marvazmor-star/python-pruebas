@@ -9,8 +9,9 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from urllib.request import pathname2url
 
-# Importación dinámica y segura de la API COM nativa de Windows
+# Importación dinámica de la API COM de Windows para Excel
 if sys.platform == 'win32':
     import comtypes.client
 else:
@@ -18,14 +19,52 @@ else:
 
 # --- FUNCIONES DE CONVERSIÓN ---
 
-def convertir_con_libreoffice_nativo(archivo_excel, ruta_origen, ruta_destino):
-    ruta_completa_excel = os.path.join(ruta_origen, archivo_excel)
-    comando = ["libreoffice", "--headless", "--convert-to", "pdf", "--outdir", ruta_destino, ruta_completa_excel]
+def convertir_con_libreoffice_nativo(archivo_excel, ruta_origen, ruta_destino, indice_hilo):
+    ruta_completa = os.path.abspath(os.path.join(ruta_origen, archivo_excel))
+    ruta_destino_abs = os.path.abspath(ruta_destino)
+    
+    # 1. Convertimos la ruta al formato URI (file:///) que LibreOffice digiere sin errores
+    url_archivo = "file://" + pathname2url(ruta_completa)
+    
+    # 2. Creamos un perfil de usuario único por cada hilo para evitar bloqueos por concurrencia
+    env_perfil = f"-env:UserInstallation=file:///{pathname2url(os.path.join(ruta_destino_abs, f'_lo_profile_{indice_hilo}'))}"
+    
+    comando = [
+        "libreoffice",
+        env_perfil,
+        "--headless",
+        "--convert-to", "pdf",
+        "--outdir", ruta_destino_abs,
+        url_archivo
+    ]
+    
     try:
-        subprocess.run(comando, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return True, None
+        # Ejecutamos el subproceso ocultando consolas flotantes
+        startupinfo = None
+        if sys.platform == 'win32':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0 # SW_HIDE
+
+        resultado = subprocess.run(
+            comando, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE, 
+            startupinfo=startupinfo,
+            timeout=45
+        )
+        
+        if resultado.returncode == 0:
+            return True, None
+        else:
+            error_msg = resultado.stderr.decode('utf-8', errors='ignore').strip()
+            return False, f"Código de salida LibreOffice: {resultado.returncode}. {error_msg}"
+            
+    except subprocess.TimeoutExpired:
+        return False, "Tiempo de espera agotado (Timeout de 45s de LibreOffice)."
     except Exception as e:
         return False, str(e)
+
 
 # --- GENERADOR DE INFORME PREMIUM HTML5/CSS3 ---
 
@@ -160,8 +199,8 @@ class AplicacionConversor:
         ttk.Label(root, text="Motor de Renderizado y Conversión:").pack(anchor="w", **padding_opciones)
         frame_radio = ttk.Frame(root)
         frame_radio.pack(anchor="w", padx=15, pady=3)
-        ttk.Radiobutton(frame_radio, text="Microsoft Excel (Instancia Única Ultra Rápida)", variable=self.var_motor, value="excel").pack(side="left", padx=(0,20))
-        ttk.Radiobutton(frame_radio, text="LibreOffice Headless (80% Cores)", variable=self.var_motor, value="libreoffice").pack(side="left")
+        ttk.Radiobutton(frame_radio, text="Microsoft Excel (Instancia Única Silenciosa)", variable=self.var_motor, value="excel").pack(side="left", padx=(0,20))
+        ttk.Radiobutton(frame_radio, text="LibreOffice Headless (Entorno Concurrente Blindado)", variable=self.var_motor, value="libreoffice").pack(side="left")
 
         self.btn_procesar = ttk.Button(root, text="INICIAR PROCESAMIENTO MASIVO", command=self.ejecutar_procesamiento)
         self.btn_procesar.pack(pady=15, ipadx=20, ipady=4)
@@ -192,7 +231,7 @@ class AplicacionConversor:
             return
         
         if not os.path.exists(self.var_origen.get()):
-            messagebox.showerror("Ruta Inválida", "La ruta de origen especificada no existe del sistema.")
+            messagebox.showerror("Ruta Inválida", "La ruta de origen especificada no existe en el sistema.")
             return
 
         archivos = [f for f in os.listdir(self.var_origen.get()) if f.endswith(('.xlsx', '.xls', '.xlsm'))]
@@ -212,7 +251,7 @@ class AplicacionConversor:
             'pc': platform.node(),
             'dominio': os.environ.get('USERDOMAIN', 'Local Network'),
             'usuario': getpass.getuser(),
-            'motor': "Microsoft Excel (API Streamlined)" if self.var_motor.get() == "excel" else "LibreOffice Multi-Core",
+            'motor': "Microsoft Excel (API Oculta)" if self.var_motor.get() == "excel" else "LibreOffice Headless (Aislado por Hilos)",
             'hora_inicio': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'total_inicial': total_inicial
         }
@@ -229,7 +268,6 @@ class AplicacionConversor:
         if self.var_motor.get() == "excel":
             excel_app = None
             try:
-                # Inicializamos una ÚNICA instancia oculta de Excel en memoria
                 excel_app = comtypes.client.CreateObject("Excel.Application")
                 excel_app.Visible = False
                 excel_app.DisplayAlerts = False
@@ -244,15 +282,13 @@ class AplicacionConversor:
                         ruta_excel = os.path.join(origen_abs, archivo)
                         ruta_pdf = os.path.join(destino_abs, f"{nombre_base}.pdf")
                         
-                        # Operación nativa ultra rápida en memoria RAM
                         wb = excel_app.Workbooks.Open(ruta_excel, 0, True)
                         wb.ExportAsFixedFormat(0, ruta_pdf)
                         wb.Close(False)
-                        
                         total_ok += 1
                     except Exception as inner_e:
                         total_error += 1
-                        errores.append({'archivo': archivo, 'motivo': str(inner_e)})
+                        errores.append({'archivo': archivo, 'motivo': f"API Excel COM: {str(inner_e)}"})
                     
                     contador += 1
                     self.actualizar_interfaz_progreso(contador, total_inicial)
@@ -261,16 +297,25 @@ class AplicacionConversor:
                 messagebox.showerror("Error de Inicialización COM", f"No se pudo conectar con la API de Excel: {str(e)}")
             finally:
                 if excel_app is not None:
-                    try:
-                        excel_app.Quit()
-                    except:
-                        pass
+                    try: excel_app.Quit()
+                    except: pass
         else:
+            # Configuración multi-hilo para LibreOffice con entornos limpios
             cores = multiprocessing.cpu_count()
             hilos_80 = max(1, int(cores * 0.8))
             
             with ThreadPoolExecutor(max_workers=hilos_80) as executor:
-                futuros = {executor.submit(convertir_con_libreoffice_nativo, f, datos_informe['ruta_origen'], datos_informe['ruta_destino']): f for f in archivos}
+                # Enviamos el índice del hilo para aislar la carpeta temporal de cada proceso
+                futuros = {
+                    executor.submit(
+                        convertir_con_libreoffice_nativo, 
+                        archivo, 
+                        datos_informe['ruta_origen'], 
+                        datos_informe['ruta_destino'], 
+                        i
+                    ): archivo for i, archivo in enumerate(archivos)
+                }
+                
                 for fut in futuros:
                     archivo = futuros[fut]
                     try:
@@ -279,13 +324,21 @@ class AplicacionConversor:
                             total_ok += 1
                         else:
                             total_error += 1
-                            errores.append({'archivo': archivo, 'motivo': "El binario headless de LibreOffice rechazó el documento debido a la estructura interna del XML de la hoja."})
+                            errores.append({'archivo': archivo, 'motivo': motivo})
                     except Exception as e:
                         total_error += 1
-                        errores.append({'archivo': archivo, 'motivo': str(e)})
+                        errores.append({'archivo': archivo, 'motivo': f"Excepción de Hilo: {str(e)}"})
                     
                     contador += 1
                     self.actualizar_interfaz_progreso(contador, total_inicial)
+            
+            # Limpieza post-proceso de las carpetas de perfil generadas por los hilos
+            for i in range(total_inicial):
+                perfil_temp = os.path.join(os.path.abspath(datos_informe['ruta_destino']), f"_lo_profile_{i}")
+                if os.path.exists(perfil_temp):
+                    import shutil
+                    try: shutil.rmtree(perfil_temp, ignore_errors=True)
+                    except: pass
 
         datos_informe['hora_fin'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         datos_informe['total_ok'] = total_ok
