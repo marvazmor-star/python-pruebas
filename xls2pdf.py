@@ -10,6 +10,12 @@ from concurrent.futures import ThreadPoolExecutor
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+# Importación dinámica y segura de la API COM nativa de Windows
+if sys.platform == 'win32':
+    import comtypes.client
+else:
+    comtypes = None
+
 # --- FUNCIONES DE CONVERSIÓN ---
 
 def convertir_con_libreoffice_nativo(archivo_excel, ruta_origen, ruta_destino):
@@ -19,46 +25,6 @@ def convertir_con_libreoffice_nativo(archivo_excel, ruta_origen, ruta_destino):
         subprocess.run(comando, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return True, None
     except Exception as e:
-        return False, str(e)
-
-def convertir_con_excel_nativo(archivo_excel, ruta_origen, ruta_destino):
-    origen_abs = os.path.abspath(ruta_origen)
-    destino_abs = os.path.abspath(ruta_destino)
-    nombre_base = os.path.splitext(archivo_excel)[0]
-    ruta_excel = os.path.join(origen_abs, archivo_excel)
-    ruta_pdf = os.path.join(destino_abs, f"{nombre_base}.pdf")
-    
-    vbs_path = os.path.join(destino_abs, f"_temp_{nombre_base}.vbs")
-    
-    # CORRECCIÓN AQUÍ: Limpiamos las barras fuera del f-string para evitar el SyntaxError
-    ruta_excel_escapada = ruta_excel.replace('\\', '\\\\')
-    ruta_pdf_escapada = ruta_pdf.replace('\\', '\\\\')
-    
-    vbs_code = f"""
-    On Error Resume Next
-    Set excelApp = CreateObject("Excel.Application")
-    excelApp.Visible = False
-    excelApp.DisplayAlerts = False
-    excelApp.ScreenUpdating = False
-    Set wb = excelApp.Workbooks.Open("{ruta_excel_escapada}", 0, True)
-    wb.ExportAsFixedFormat 0, "{ruta_pdf_escapada}"
-    wb.Close False
-    excelApp.Quit
-    """
-    try:
-        with open(vbs_path, "w", encoding="utf-8") as f:
-            f.write(vbs_code)
-        resultado = subprocess.run(["cscript", "//NoLogo", vbs_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        if os.path.exists(vbs_path):
-            os.remove(vbs_path)
-            
-        if resultado.returncode == 0:
-            return True, None
-        return False, "Error en la ejecución de la API nativa de MS Excel"
-    except Exception as e:
-        if os.path.exists(vbs_path):
-            os.remove(vbs_path)
         return False, str(e)
 
 # --- GENERADOR DE INFORME PREMIUM HTML5/CSS3 ---
@@ -194,7 +160,7 @@ class AplicacionConversor:
         ttk.Label(root, text="Motor de Renderizado y Conversión:").pack(anchor="w", **padding_opciones)
         frame_radio = ttk.Frame(root)
         frame_radio.pack(anchor="w", padx=15, pady=3)
-        ttk.Radiobutton(frame_radio, text="Microsoft Excel (Fidelidad 100%)", variable=self.var_motor, value="excel").pack(side="left", padx=(0,20))
+        ttk.Radiobutton(frame_radio, text="Microsoft Excel (Instancia Única Ultra Rápida)", variable=self.var_motor, value="excel").pack(side="left", padx=(0,20))
         ttk.Radiobutton(frame_radio, text="LibreOffice Headless (80% Cores)", variable=self.var_motor, value="libreoffice").pack(side="left")
 
         self.btn_procesar = ttk.Button(root, text="INICIAR PROCESAMIENTO MASIVO", command=self.ejecutar_procesamiento)
@@ -226,7 +192,7 @@ class AplicacionConversor:
             return
         
         if not os.path.exists(self.var_origen.get()):
-            messagebox.showerror("Ruta Inválida", "La ruta de origen especificada no existe en el sistema.")
+            messagebox.showerror("Ruta Inválida", "La ruta de origen especificada no existe del sistema.")
             return
 
         archivos = [f for f in os.listdir(self.var_origen.get()) if f.endswith(('.xlsx', '.xls', '.xlsm'))]
@@ -246,7 +212,7 @@ class AplicacionConversor:
             'pc': platform.node(),
             'dominio': os.environ.get('USERDOMAIN', 'Local Network'),
             'usuario': getpass.getuser(),
-            'motor': "Microsoft Excel (Motor Nativo)" if self.var_motor.get() == "excel" else "LibreOffice Multi-Core",
+            'motor': "Microsoft Excel (API Streamlined)" if self.var_motor.get() == "excel" else "LibreOffice Multi-Core",
             'hora_inicio': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'total_inicial': total_inicial
         }
@@ -261,15 +227,44 @@ class AplicacionConversor:
         contador = 0
 
         if self.var_motor.get() == "excel":
-            for archivo in archivos:
-                exito, motivo = convertir_con_excel_nativo(archivo, datos_informe['ruta_origen'], datos_informe['ruta_destino'])
-                if exito:
-                    total_ok += 1
-                else:
-                    total_error += 1
-                    errores.append({'archivo': archivo, 'motivo': motivo})
-                contador += 1
-                self.actualizar_interfaz_progreso(contador, total_inicial)
+            excel_app = None
+            try:
+                # Inicializamos una ÚNICA instancia oculta de Excel en memoria
+                excel_app = comtypes.client.CreateObject("Excel.Application")
+                excel_app.Visible = False
+                excel_app.DisplayAlerts = False
+                excel_app.ScreenUpdating = False
+                
+                origen_abs = os.path.abspath(datos_informe['ruta_origen'])
+                destino_abs = os.path.abspath(datos_informe['ruta_destino'])
+
+                for archivo in archivos:
+                    try:
+                        nombre_base = os.path.splitext(archivo)[0]
+                        ruta_excel = os.path.join(origen_abs, archivo)
+                        ruta_pdf = os.path.join(destino_abs, f"{nombre_base}.pdf")
+                        
+                        # Operación nativa ultra rápida en memoria RAM
+                        wb = excel_app.Workbooks.Open(ruta_excel, 0, True)
+                        wb.ExportAsFixedFormat(0, ruta_pdf)
+                        wb.Close(False)
+                        
+                        total_ok += 1
+                    except Exception as inner_e:
+                        total_error += 1
+                        errores.append({'archivo': archivo, 'motivo': str(inner_e)})
+                    
+                    contador += 1
+                    self.actualizar_interfaz_progreso(contador, total_inicial)
+                    
+            except Exception as e:
+                messagebox.showerror("Error de Inicialización COM", f"No se pudo conectar con la API de Excel: {str(e)}")
+            finally:
+                if excel_app is not None:
+                    try:
+                        excel_app.Quit()
+                    except:
+                        pass
         else:
             cores = multiprocessing.cpu_count()
             hilos_80 = max(1, int(cores * 0.8))
@@ -284,10 +279,11 @@ class AplicacionConversor:
                             total_ok += 1
                         else:
                             total_error += 1
-                            errores.append({'archivo': archivo, 'motivo': "El binario headless de LibreOffice rechazó el documento."})
+                            errores.append({'archivo': archivo, 'motivo': "El binario headless de LibreOffice rechazó el documento debido a la estructura interna del XML de la hoja."})
                     except Exception as e:
                         total_error += 1
                         errores.append({'archivo': archivo, 'motivo': str(e)})
+                    
                     contador += 1
                     self.actualizar_interfaz_progreso(contador, total_inicial)
 
