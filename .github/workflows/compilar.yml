@@ -3,11 +3,15 @@ name: Compilar Executable Windows
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch: # Permite compilar manualmente haciendo clic en un botón
+  workflow_dispatch:
+
+env:
+  # Forzamos el uso de Node 24 para eliminar por completo las advertencias de GitHub
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
-    runs-on: windows-latest # Ejecuta el servidor en Windows para que compile un .exe de Windows
+    runs-on: windows-latest
 
     steps:
     - name: Descargar codigo del repositorio
@@ -17,15 +21,24 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
+        cache: 'pip' # Ayuda a que la instalación sea más limpia
 
-    - name: Instalar librerias y PyInstaller
+    - name: Instalar librerias base
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install tqdm pyinstaller
+
+    - name: Instalar pywin32 de forma segura para PyInstaller
+      run: |
+        # En servidores limpios de GitHub, pywin32 necesita registrar sus archivos del sistema
+        pip install pywin32
+        python Scripts/pywin32_postinstall.py -install
+      continue-on-error: true # Evita que el script se detenga si ya estaba pre-registrado
 
     - name: Compilar script a EXE
       run: |
-        pyinstaller --onefile conversor.py
+        # Añadimos flags para limpiar la compilación y asegurar que recoja los componentes ocultos
+        pyinstaller --onefile --clean --hidden-import=win32timezone conversor.py
 
     - name: Subir el ejecutable finalizado a GitHub
       uses: actions/upload-artifact@v4
