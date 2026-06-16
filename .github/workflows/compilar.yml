@@ -10,11 +10,13 @@ jobs:
     runs-on: windows-latest
 
     steps:
+    # Actualizado a v4.2.2 (compatible con Node 24)
     - name: Descargar codigo del repositorio
-      uses: actions/checkout@v4
+      uses: actions/checkout@v4.2.2
 
+    # Actualizado a v5.3.0 (compatible con Node 24)
     - name: Configurar Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v5.3.0
       with:
         python-version: '3.11'
 
@@ -25,7 +27,7 @@ jobs:
 
     - name: Compilar script a EXE
       run: |
-        pyinstaller --onefile --clean xls2pdf.py
+        pyinstaller --onefile --noconsole --clean xls2pdf.py
 
     - name: Subir el ejecutable finalizado a GitHub
       uses: actions/upload-artifact@v4
