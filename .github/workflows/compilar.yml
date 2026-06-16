@@ -5,7 +5,6 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
-# Forzamos a nivel global del servidor el uso de Node 24 para eliminar los avisos
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -22,15 +21,14 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Instalar PyInstaller y dependencias de empaquetado
+    - name: Instalar PyInstaller limpio
       run: |
         python -m pip install --upgrade pip
-        pip install pyinstaller wheel
+        pip install pyinstaller
 
-    - name: Compilar script a EXE (Modo Ventana Seguro)
+    - name: Compilar script a EXE
       run: |
-        # Añadimos --windowed para asegurar el soporte de Tkinter y limpiamos los ganchos
-        pyinstaller --onefile --windowed --clean --noconsole xls2pdf.py
+        pyinstaller --onefile --windowed --clean xls2pdf.py
 
     - name: Subir el ejecutable finalizado a GitHub
       uses: actions/upload-artifact@v4
