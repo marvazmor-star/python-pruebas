@@ -38,7 +38,7 @@ jobs:
     - name: Compilar script a EXE
       run: |
         # Añadimos flags para limpiar la compilación y asegurar que recoja los componentes ocultos
-        pyinstaller --onefile --clean --hidden-import=win32timezone conversor.py
+        pyinstaller --onefile --clean --hidden-import=win32timezone xls2pdf.py
 
     - name: Subir el ejecutable finalizado a GitHub
       uses: actions/upload-artifact@v4
