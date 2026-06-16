@@ -5,29 +5,32 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+# Forzamos a nivel global del servidor el uso de Node 24 para eliminar los avisos
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-    # Actualizado a v4.2.2 (compatible con Node 24)
     - name: Descargar codigo del repositorio
-      uses: actions/checkout@v4.2.2
+      uses: actions/checkout@v4
 
-    # Actualizado a v5.3.0 (compatible con Node 24)
     - name: Configurar Python
-      uses: actions/setup-python@v5.3.0
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
-    - name: Instalar PyInstaller limpio
+    - name: Instalar PyInstaller y dependencias de empaquetado
       run: |
         python -m pip install --upgrade pip
-        pip install pyinstaller
+        pip install pyinstaller wheel
 
-    - name: Compilar script a EXE
+    - name: Compilar script a EXE (Modo Ventana Seguro)
       run: |
-        pyinstaller --onefile --noconsole --clean xls2pdf.py
+        # Añadimos --windowed para asegurar el soporte de Tkinter y limpiamos los ganchos
+        pyinstaller --onefile --windowed --clean --noconsole xls2pdf.py
 
     - name: Subir el ejecutable finalizado a GitHub
       uses: actions/upload-artifact@v4
